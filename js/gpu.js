@@ -47,13 +47,13 @@ async function runCpuScalingBenchmark(maxWorkers, perWorkerMs = 300, onProgress)
 }
 
 function benchmarkOneWorker(worker, durationMs) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const id = 'bench-' + Math.random().toString(36).slice(2);
     const handler = (ev) => {
-      if (ev.data && ev.data.id === id && ev.data.type === 'benchResult') {
-        worker.removeEventListener('message', handler);
-        resolve(ev.data.count);
-      }
+      if (!ev.data || ev.data.id !== id) return;
+      worker.removeEventListener('message', handler);
+      if (ev.data.type === 'benchResult') resolve(ev.data.count);
+      else if (ev.data.type === 'benchError') reject(new Error(ev.data.message));
     };
     worker.addEventListener('message', handler);
     worker.postMessage({ type: 'bench', id, durationMs });

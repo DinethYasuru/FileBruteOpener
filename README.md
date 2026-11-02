@@ -113,7 +113,9 @@ index.html          Dashboard UI shell
 css/style.css        Styling
 js/utils.js          Byte helpers, CRC32, Shannon entropy, AES-CBC-no-pad helper
 js/md5.js            Dependency-free MD5 (not provided by Web Crypto)
+js/md5-wasm.js       Optional WASM-accelerated md5() - see "Performance" below
 js/rc4.js             RC4 stream cipher
+js/rc4-wasm.js        Optional WASM-accelerated rc4() - see "Performance" below
 js/sha1.js            Dependency-free, synchronous SHA-1 (crypto.subtle's is async - too
                        slow for Office's mandatory 50,000-round KDF, one await per round)
 js/aes.js             Dependency-free AES-128/192/256 block cipher (ECB encrypt/decrypt) -
@@ -127,6 +129,8 @@ js/worker-pool.js    Self-contained Blob-URL Web Worker pool for candidate searc
 js/gpu.js             WebGPU detection + CPU worker-scaling benchmark
 js/generator.js      Encrypted PDF/ZIP test-file generator
 js/app.js             Dashboard wiring: state, panels, job history, export
+wasm-src/             C source for the WASM modules above (not loaded at runtime - kept so
+                       the embedded binaries aren't a black box; see wasm-src/README.md)
 local-service/        Optional, separate: real-tool sample generation + detection-only
                        inspection for RAR/7z/Office/GPG (see local-service/README.md)
 ```
@@ -139,6 +143,47 @@ separate worker `.js` files fetched over the network. This is what lets the whol
 from a **double-clicked `index.html`** with no server — `file://` pages generally can't
 `fetch()` sibling files due to browser CORS restrictions, but inline `<script>` tags and
 Blob-URL workers both work fine.
+
+## Performance
+
+Why PDF/ZIP mask searches can take hours for large keyspaces, what was done about it, and
+what wasn't:
+
+**What's accelerated.** `js/md5.js` and `js/rc4.js` are each paired with an optional WASM
+module (`js/md5-wasm.js`, `js/rc4-wasm.js`) compiled from freestanding C (`wasm-src/`, with
+Web Crypto's AES-ECB/unpadded-CBC gap in mind the same way `js/aes.js` is). Each one falls
+back silently to its pure-JS counterpart if `WebAssembly` is unavailable or instantiation
+fails - never load-bearing for correctness, both validated independently before being
+trusted (NIST/RFC test vectors, thousands of random trials against Node's own `crypto`
+module, and - since a naive port of either module would corrupt every password check that
+uses it - re-validated once embedded, by generating real PDF/ZIP/Office test files and
+confirming correct passwords still verify and wrong ones still don't).
+
+Measured in-browser, same session, same conditions: raw MD5 throughput on a realistic
+16-byte input went from ~115K calls/sec (pure JS) to ~4.3M calls/sec (WASM) - but for PDF's
+real R3/R4 password check, which also makes ~20 RC4 calls per candidate, profiling found RC4's
+own mandatory 256-round key setup, not MD5, was actually the larger cost once MD5 stopped
+being the bottleneck. With both WASM modules active, the realistic end-to-end rate for a full
+R3/R4 candidate check (testing both the user and owner password hypotheses, as the real
+search loop does) measured **894 -> 5,394 candidates/sec/worker, a 6.0x speedup** - a real,
+validated number, not the flashier-but-misleading 37x you'd get from quoting raw MD5 alone.
+
+**What wasn't touched, and why.** ZIP's WinZip AES path already runs through Web Crypto's
+native (often hardware-accelerated) PBKDF2/HMAC-SHA1, so there's no comparable JS-vs-WASM gap
+to close there. Office's SHA-1-based KDF is a *mandatory* 50,000 rounds per candidate by
+design (see the capability matrix) - that's the algorithm resisting exactly this kind of
+search, not a performance bug to engineer around.
+
+**What was considered and ruled out.** A WebGPU compute-shader kernel (the technique real
+tools like hashcat use for 10-100x gains) was evaluated and explicitly not attempted: this
+development environment has no GPU device and no software WebGPU fallback to test one against,
+and shipping an unvalidated GPU kernel for something load-bearing like password verification
+isn't something this project does - every optimization above shipped only after being checked
+against an independent ground truth first.
+
+**Also:** the worker-count slider now reports your browser's actual logical core count next
+to it, since more workers than you have cores doesn't buy you anything (not a correctness
+fix, just a UI improvement - see the search panel's dynamic estimate feature above).
 
 ## Limitations
 

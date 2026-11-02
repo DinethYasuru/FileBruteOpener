@@ -57,6 +57,7 @@
       <input type="range" id="numWorkers" min="1" max="16" value="4">
       <span id="numWorkersLabel">4</span>
     </div>
+    <p class="notes" id="numWorkersNote"></p>
     <div id="dict-fields">
       <label>One candidate password per line</label>
       <textarea id="dictInput" placeholder="password1&#10;password2&#10;letmein"></textarea>
@@ -152,7 +153,9 @@
 
 <script src="js/utils.js"></script>
 <script src="js/md5.js"></script>
+<script src="js/md5-wasm.js"></script>
 <script src="js/rc4.js"></script>
+<script src="js/rc4-wasm.js"></script>
 <script src="js/sha1.js"></script>
 <script src="js/aes.js"></script>
 <script src="js/cfb.js"></script>

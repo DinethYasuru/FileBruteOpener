@@ -197,6 +197,16 @@ function updateSearchEstimate() {
     + `${total.toLocaleString()} candidates across ${numWorkers} worker${numWorkers > 1 ? 's' : ''} -> estimated time: ${formatDuration(seconds)}.`;
 }
 
+function updateWorkersNote() {
+  const cores = navigator.hardwareConcurrency || null;
+  const workers = parseInt(el('numWorkers').value, 10);
+  const note = el('numWorkersNote');
+  if (!cores) { note.textContent = ''; return; }
+  note.textContent = workers > cores
+    ? `Your machine reports ${cores} logical cores - more than ${cores} workers likely won't go faster (and may go slightly slower from contention).`
+    : `Your machine reports ${cores} logical cores.`;
+}
+
 function setupSearchPanel() {
   el('searchMode').addEventListener('change', () => {
     const mode = el('searchMode').value;
@@ -208,9 +218,16 @@ function setupSearchPanel() {
   el('searchCancelBtn').addEventListener('click', () => {
     if (state.activeSearch) state.activeSearch.cancel();
   });
-  el('numWorkers').value = navigator.hardwareConcurrency || 4;
+  const cores = navigator.hardwareConcurrency || 4;
+  el('numWorkers').max = Math.max(16, cores);
+  el('numWorkers').value = cores;
   el('numWorkersLabel').textContent = el('numWorkers').value;
-  el('numWorkers').addEventListener('input', () => { el('numWorkersLabel').textContent = el('numWorkers').value; updateSearchEstimate(); });
+  updateWorkersNote();
+  el('numWorkers').addEventListener('input', () => {
+    el('numWorkersLabel').textContent = el('numWorkers').value;
+    updateWorkersNote();
+    updateSearchEstimate();
+  });
   el('dictInput').addEventListener('input', updateSearchEstimate);
   el('maskCharset').addEventListener('input', updateSearchEstimate);
   el('maskLength').addEventListener('input', updateSearchEstimate);
@@ -467,4 +484,6 @@ window.addEventListener('DOMContentLoaded', () => {
   setupDiagnostics();
   setupGenerator();
   setupHistoryExport();
+  tryEnableMd5Wasm(); // fire-and-forget; falls back silently to pure JS if unavailable
+  tryEnableRc4Wasm();
 });
