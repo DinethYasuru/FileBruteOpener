@@ -40,7 +40,13 @@
   </section>
 
   <section class="panel hidden" id="panel-search">
-    <h2>4. Candidate search (bounded)</h2>
+    <h2>4. Candidate search</h2>
+    <p class="notes">
+      <strong>Dictionary</strong>: try each password you list, one per line - use this when you have a
+      shortlist of guesses. <strong>Mask</strong>: try every combination of a charset up to a fixed length
+      (e.g. all 4-digit PINs) - use this when you know the password's shape but not its value. Both are
+      finite by design: there's no unbounded/open-ended brute-force mode here.
+    </p>
     <div class="row">
       <label>Mode</label>
       <select id="searchMode">
@@ -61,6 +67,7 @@
       <label>Length</label>
       <input type="number" id="maskLength" value="4" min="1" max="8" style="width:70px">
     </div>
+    <p class="notes" id="search-estimate"></p>
     <div class="row">
       <button id="searchStartBtn">Start search</button>
       <button id="searchCancelBtn" class="secondary" disabled>Cancel</button>

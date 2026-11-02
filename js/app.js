@@ -9,6 +9,8 @@ const state = {
   officeInfo: null,
   history: [],
   activeSearch: null,
+  calibratedRate: null,   // candidates/sec/worker, measured live on the currently loaded file
+  calibratedFormat: null,
 };
 
 const el = (id) => document.getElementById(id);
@@ -94,6 +96,9 @@ function updateActionPanelsVisibility() {
   el('panel-search').classList.toggle('hidden', !applicable);
   el('verify-result').innerHTML = '';
   el('search-result').innerHTML = '';
+  state.calibratedRate = null;
+  el('search-estimate').textContent = '';
+  if (applicable) calibrateCurrentFile(); // async; updates search-estimate when done
 }
 
 /* ---------- Known-password verification ---------- */
@@ -126,14 +131,78 @@ function renderVerifyResult(result, pw) {
 
 /* ---------- Candidate search (dictionary / mask) ---------- */
 
-const MAX_MASK_KEYSPACE = 25_000_000;
-const MAX_DICT_SIZE = 2_000_000;
+// These are sanity ceilings only - preventing a textarea paste or mask typo from trying to
+// hold billions of candidates in memory - not a judgment about how long a search "should"
+// take. How long it *will* take is shown live via estimateRate() below instead, because a
+// single flat number can't mean the same thing across formats that differ by 1000x in speed
+// (compare PDF/ZIP's thousands/candidates/sec to Office's mandatory-slow ~2-3/sec).
+const ABSOLUTE_MAX_MASK_KEYSPACE = 2_000_000_000;
+const ABSOLUTE_MAX_DICT_SIZE = 5_000_000;
+
+const CONFIRM_THRESHOLD_SECONDS = 120; // beyond this, ask before committing to a long search
+
+function formatDuration(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return 'unknown';
+  if (seconds < 1) return '<1 second';
+  if (seconds < 60) return `${Math.ceil(seconds)} second${seconds >= 2 ? 's' : ''}`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${minutes.toFixed(1)} minute${minutes >= 2 ? 's' : ''}`;
+  const hours = minutes / 60;
+  if (hours < 48) return `${hours.toFixed(1)} hour${hours >= 2 ? 's' : ''}`;
+  const days = hours / 24;
+  if (days < 365) return `${days.toFixed(1)} day${days >= 2 ? 's' : ''}`;
+  return `${(days / 365).toFixed(1)} years`;
+}
+
+/** Measures real single-worker throughput for the currently loaded file + format, by timing
+ * a handful of dummy candidate checks through the exact same code path a search worker uses
+ * (testCandidate, from worker-pool.js). Cheap for PDF/ZIP (sub-millisecond each); for Office
+ * this costs a couple of seconds up front (5 candidates x ~400ms), which is fine since it's
+ * only measured once per loaded file, not once per search attempt. */
+async function estimateRate(format, payload, sampleSize = 5) {
+  const start = performance.now();
+  for (let i = 0; i < sampleSize; i++) await testCandidate(format, 'calibration-probe-' + i, payload);
+  const elapsed = (performance.now() - start) / 1000;
+  return sampleSize / elapsed;
+}
+
+async function calibrateCurrentFile() {
+  if (!verifiableFormatApplicable()) { state.calibratedRate = null; return; }
+  const { format, payload } = buildSearchPayload();
+  el('search-estimate').textContent = 'Measuring throughput for this file…';
+  state.calibratedRate = await estimateRate(format, payload);
+  state.calibratedFormat = format;
+  updateSearchEstimate();
+}
+
+function currentTotalCandidates() {
+  const mode = el('searchMode').value;
+  if (mode === 'dict') {
+    return el('dictInput').value.split('\n').map(s => s.trim()).filter(Boolean).length;
+  }
+  const charset = el('maskCharset').value;
+  const length = parseInt(el('maskLength').value, 10);
+  if (!charset || !length || length < 1) return 0;
+  return maskKeyspaceSize(charset.length, length);
+}
+
+function updateSearchEstimate() {
+  const box = el('search-estimate');
+  if (state.calibratedRate == null) { box.textContent = ''; return; }
+  const total = currentTotalCandidates();
+  const numWorkers = parseInt(el('numWorkers').value, 10) || 1;
+  const aggregateRate = state.calibratedRate * numWorkers;
+  const seconds = total / aggregateRate;
+  box.textContent = `Measured ~${state.calibratedRate.toFixed(state.calibratedRate < 10 ? 1 : 0)} candidates/sec/worker for this file. `
+    + `${total.toLocaleString()} candidates across ${numWorkers} worker${numWorkers > 1 ? 's' : ''} -> estimated time: ${formatDuration(seconds)}.`;
+}
 
 function setupSearchPanel() {
   el('searchMode').addEventListener('change', () => {
     const mode = el('searchMode').value;
     el('dict-fields').classList.toggle('hidden', mode !== 'dict');
     el('mask-fields').classList.toggle('hidden', mode !== 'mask');
+    updateSearchEstimate();
   });
   el('searchStartBtn').addEventListener('click', startSearch);
   el('searchCancelBtn').addEventListener('click', () => {
@@ -141,7 +210,10 @@ function setupSearchPanel() {
   });
   el('numWorkers').value = navigator.hardwareConcurrency || 4;
   el('numWorkersLabel').textContent = el('numWorkers').value;
-  el('numWorkers').addEventListener('input', () => { el('numWorkersLabel').textContent = el('numWorkers').value; });
+  el('numWorkers').addEventListener('input', () => { el('numWorkersLabel').textContent = el('numWorkers').value; updateSearchEstimate(); });
+  el('dictInput').addEventListener('input', updateSearchEstimate);
+  el('maskCharset').addEventListener('input', updateSearchEstimate);
+  el('maskLength').addEventListener('input', updateSearchEstimate);
 }
 
 function buildSearchPayload() {
@@ -162,7 +234,7 @@ async function startSearch() {
   if (mode === 'dict') {
     const lines = el('dictInput').value.split('\n').map(s => s.trim()).filter(Boolean);
     if (lines.length === 0) { alert('Enter at least one candidate password.'); return; }
-    if (lines.length > MAX_DICT_SIZE) { alert(`Dictionary too large (max ${MAX_DICT_SIZE.toLocaleString()} entries). This tool is bounded by design.`); return; }
+    if (lines.length > ABSOLUTE_MAX_DICT_SIZE) { alert(`Dictionary too large (max ${ABSOLUTE_MAX_DICT_SIZE.toLocaleString()} entries - a safety ceiling against pasting something enormous, not a speed judgment).`); return; }
     opts.dict = lines;
     total = lines.length;
   } else {
@@ -170,12 +242,25 @@ async function startSearch() {
     const length = parseInt(el('maskLength').value, 10);
     if (!charset || !length || length < 1) { alert('Provide a charset and a length of at least 1.'); return; }
     const keyspace = Math.pow(charset.length, length);
-    if (keyspace > MAX_MASK_KEYSPACE) {
-      alert(`Keyspace of ${keyspace.toLocaleString()} candidates exceeds the ${MAX_MASK_KEYSPACE.toLocaleString()} bound this tool enforces. Narrow the charset or length.`);
+    if (keyspace > ABSOLUTE_MAX_MASK_KEYSPACE) {
+      alert(`Keyspace of ${keyspace.toLocaleString()} candidates exceeds the ${ABSOLUTE_MAX_MASK_KEYSPACE.toLocaleString()} safety ceiling. Narrow the charset or length.`);
       return;
     }
     opts.charset = charset; opts.length = length;
     total = keyspace;
+  }
+
+  if (state.calibratedRate != null) {
+    const aggregateRate = state.calibratedRate * numWorkers;
+    const estimatedSeconds = total / aggregateRate;
+    if (estimatedSeconds > CONFIRM_THRESHOLD_SECONDS) {
+      const proceed = confirm(
+        `At the measured rate for this file (~${state.calibratedRate.toFixed(1)} candidates/sec/worker), ` +
+        `testing all ${total.toLocaleString()} candidates with ${numWorkers} worker${numWorkers > 1 ? 's' : ''} ` +
+        `will take approximately ${formatDuration(estimatedSeconds)}.\n\nStart anyway?`
+      );
+      if (!proceed) return;
+    }
   }
 
   searchState = { total, startTime: performance.now() };

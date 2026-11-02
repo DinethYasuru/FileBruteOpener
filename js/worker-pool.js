@@ -13,29 +13,9 @@
    officeUtf16LeBytes, officeU32leBytes, officeXorRepeating, officeDeriveStandardKey,
    officeCheckStandardPassword. */
 
-function buildWorkerSource() {
-  const fns = [
-    strToBytes, concatBytes, aesCbcNoPadEncrypt, crc32, crc32Final, md5, rc4, sha1,
-    aesGmul, aesKeyExpansion, aesAddRoundKey, aesInvSubBytes, aesInvShiftRows, aesInvMixColumns,
-    aesDecryptBlock, aesEcbDecrypt,
-    computeKeyR234, pdfPadPassword, checkUserPasswordR234, checkOwnerPasswordR234, bytesEqual,
-    sha, hash2B, checkUserPasswordR56, checkOwnerPasswordR56,
-    zipCryptoInitKeys, zipCryptoDecryptBytes, checkZipCryptoPassword,
-    deriveAesKeyMaterial, checkWinZipAesPassword,
-    officeUtf16LeBytes, officeU32leBytes, officeXorRepeating, officeDeriveStandardKey,
-    officeCheckStandardPassword
-  ].map(f => f.toString()).join('\n\n');
-
-  const constants = `
-const CRC32_TABLE = Uint32Array.from(${JSON.stringify(Array.from(CRC32_TABLE))});
-const PDF_PAD = Uint8Array.from(${JSON.stringify(Array.from(PDF_PAD))});
-const AES_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_SBOX))});
-const AES_INV_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_INV_SBOX))});
-const AES_RCON = Uint8Array.from(${JSON.stringify(Array.from(AES_RCON))});
-`;
-
-  const workerMain = `
-let cancelled = false;
+/* Per-candidate test functions: real top-level functions (not just template-string text) so
+ * the main thread can call them too, for live throughput calibration (see estimateRate in
+ * app.js) - the calibration then measures exactly what a search worker would actually do. */
 
 function indexToCandidate(index, charset, length) {
   const chars = new Array(length);
@@ -79,6 +59,31 @@ async function testCandidate(format, candidate, payload) {
   if (format === 'office') return testOfficeCandidate(candidate, payload);
   return testZipCandidate(candidate, payload);
 }
+
+function buildWorkerSource() {
+  const fns = [
+    strToBytes, concatBytes, aesCbcNoPadEncrypt, crc32, crc32Final, md5, rc4, sha1,
+    aesGmul, aesKeyExpansion, aesAddRoundKey, aesInvSubBytes, aesInvShiftRows, aesInvMixColumns,
+    aesDecryptBlock, aesEcbDecrypt,
+    computeKeyR234, pdfPadPassword, checkUserPasswordR234, checkOwnerPasswordR234, bytesEqual,
+    sha, hash2B, checkUserPasswordR56, checkOwnerPasswordR56,
+    zipCryptoInitKeys, zipCryptoDecryptBytes, checkZipCryptoPassword,
+    deriveAesKeyMaterial, checkWinZipAesPassword,
+    officeUtf16LeBytes, officeU32leBytes, officeXorRepeating, officeDeriveStandardKey,
+    officeCheckStandardPassword,
+    indexToCandidate, testPdfCandidate, testZipCandidate, testOfficeCandidate, testCandidate
+  ].map(f => f.toString()).join('\n\n');
+
+  const constants = `
+const CRC32_TABLE = Uint32Array.from(${JSON.stringify(Array.from(CRC32_TABLE))});
+const PDF_PAD = Uint8Array.from(${JSON.stringify(Array.from(PDF_PAD))});
+const AES_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_SBOX))});
+const AES_INV_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_INV_SBOX))});
+const AES_RCON = Uint8Array.from(${JSON.stringify(Array.from(AES_RCON))});
+`;
+
+  const workerMain = `
+let cancelled = false;
 
 self.onmessage = async function(ev) {
   const msg = ev.data;
