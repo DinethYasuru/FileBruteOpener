@@ -251,22 +251,45 @@ const OTHER_FORMAT_INFO = {
   gpg: { label: '.gpg / OpenPGP (AES-256 symmetric)', link: 'https://gnupg.org/download/', linkText: 'gnupg.org', pkg: '"gpg"' },
 };
 
+// Static files committed under samples/ - generated once with these tools, so the hosted
+// (GitHub Pages) site can demonstrate RAR/7z/Office/GPG detection without anyone needing to
+// install anything. Same-origin fetch() works fine over http(s); see the catch below for why
+// it doesn't when index.html is opened directly via file://.
+const SAMPLE_FILES = {
+  pdf: { path: 'samples/sample.pdf', password: 'test1234' },
+  zip: { path: 'samples/sample.zip', password: 'test1234' },
+  rar: { path: 'samples/sample.rar', password: 'test1234' },
+  '7z': { path: 'samples/sample.7z', password: 'test1234' },
+  docx: { path: 'samples/sample-office.docx', password: 'test1234' },
+  xlsx: { path: 'samples/sample-office.xlsx', password: 'test1234' },
+  pptx: { path: 'samples/sample-office.pptx', password: 'test1234' },
+  gpg: { path: 'samples/sample.gpg', password: 'test1234' },
+};
+
 function setupGenerator() {
   const pwField = el('genPassword');
   const formatSelect = el('genFormat');
 
-  const updateOtherPanel = () => {
+  const updateFormatPanels = () => {
     const [kind, sub] = formatSelect.value.split(':');
     const pw = pwField.value || 'test1234';
+
     el('genOtherPanel').classList.toggle('hidden', kind !== 'other');
-    if (kind !== 'other') return;
-    const info = OTHER_FORMAT_INFO[sub];
-    el('genOtherNote').innerHTML = `${info.label} needs <a href="${info.link}" target="_blank" rel="noopener">${info.linkText}</a> (${info.pkg}) installed on your machine — a browser page can't shell out to it. Run this locally instead (it generates all four "other" formats at once; any tool that's missing is skipped automatically):`;
-    el('genOtherCommand').textContent = `node local-service/generate-samples.js ./samples ${pw}`;
+    if (kind === 'other') {
+      const info = OTHER_FORMAT_INFO[sub];
+      el('genOtherNote').innerHTML = `${info.label} needs <a href="${info.link}" target="_blank" rel="noopener">${info.linkText}</a> (${info.pkg}) installed on your machine — a browser page can't shell out to it. Run this locally instead (it generates all four "other" formats at once; any tool that's missing is skipped automatically):`;
+      el('genOtherCommand').textContent = `node local-service/generate-samples.js ./samples ${pw}`;
+    }
+
+    const sampleNote = el('genSampleNote');
+    sampleNote.classList.toggle('hidden', kind !== 'sample');
+    if (kind === 'sample') {
+      sampleNote.textContent = `Pre-generated sample — fixed known password: "${SAMPLE_FILES[sub].password}" (the password field above doesn't apply to these).`;
+    }
   };
-  formatSelect.addEventListener('change', updateOtherPanel);
-  pwField.addEventListener('input', updateOtherPanel);
-  updateOtherPanel();
+  formatSelect.addEventListener('change', updateFormatPanels);
+  pwField.addEventListener('input', updateFormatPanels);
+  updateFormatPanels();
 
   el('genBtn').addEventListener('click', async () => {
     const [kind, sub] = formatSelect.value.split(':');
@@ -286,6 +309,22 @@ function setupGenerator() {
         const bytes = await generateWinZipAesZip(pw, bits);
         downloadBytes(bytes, `test-winzip-aes${bits}.zip`);
         await loadGeneratedIntoAnalyzer(bytes, `test-winzip-aes${bits}.zip`, pw);
+      }
+    } else if (kind === 'sample') {
+      const { path: samplePath, password } = SAMPLE_FILES[sub];
+      try {
+        const res = await fetch(samplePath);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        await loadGeneratedIntoAnalyzer(bytes, samplePath.split('/').pop(), password);
+      } catch (e) {
+        el('search-result').innerHTML = '';
+        el('identify-body').innerHTML = `<div class="result-box bad">Could not load ${samplePath} via fetch() (${e.message}).
+          This works when the app is served over http(s) - e.g. GitHub Pages, or a local server like
+          <code>python3 -m http.server</code> - but browsers block fetch() of sibling files when index.html
+          is opened directly via file://. Download the file from the samples/ folder instead and drop it
+          into the loader above.</div>`;
+        el('panel-identify').classList.remove('hidden');
       }
     }
   });

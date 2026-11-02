@@ -101,7 +101,7 @@
     <div class="row">
       <label>Format</label>
       <select id="genFormat">
-        <optgroup label="Generates instantly, in-browser">
+        <optgroup label="Generates instantly, in-browser (your own password)">
           <option value="pdf:rc4-40">PDF — RC4 40-bit (R2)</option>
           <option value="pdf:rc4-128">PDF — RC4 128-bit (R3)</option>
           <option value="pdf:aes-128">PDF — AES-128 (R4)</option>
@@ -110,7 +110,17 @@
           <option value="zip:aes-128">ZIP — WinZip AES-128</option>
           <option value="zip:aes-256">ZIP — WinZip AES-256</option>
         </optgroup>
-        <optgroup label="Needs a local tool — shows a command to run instead">
+        <optgroup label="Pre-generated sample — loads instantly, no tools needed">
+          <option value="sample:pdf">PDF sample (sample.pdf)</option>
+          <option value="sample:zip">ZIP sample (sample.zip)</option>
+          <option value="sample:rar">RAR sample (sample.rar)</option>
+          <option value="sample:7z">7z sample (sample.7z)</option>
+          <option value="sample:docx">.docx sample (sample-office.docx)</option>
+          <option value="sample:xlsx">.xlsx sample (sample-office.xlsx)</option>
+          <option value="sample:pptx">.pptx sample (sample-office.pptx)</option>
+          <option value="sample:gpg">.gpg sample (sample.gpg)</option>
+        </optgroup>
+        <optgroup label="Generate your own locally — needs a tool installed">
           <option value="other:rar">RAR (needs rar)</option>
           <option value="other:7z">7z (needs 7z)</option>
           <option value="other:office">.docx / .xlsx / .pptx (needs LibreOffice)</option>
@@ -119,6 +129,8 @@
       </select>
       <button id="genBtn" class="secondary">Generate</button>
     </div>
+
+    <p class="notes hidden" id="genSampleNote"></p>
 
     <div id="genOtherPanel" class="hidden">
       <p class="notes" id="genOtherNote"></p>
