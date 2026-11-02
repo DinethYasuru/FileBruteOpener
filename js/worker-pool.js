@@ -4,23 +4,34 @@
    worker file to fetch - this is what lets the app run from a plain double-clicked
    index.html with no server and no bundler.
    Depends on (main thread globals): strToBytes, concatBytes, CRC32_TABLE, crc32, crc32Final,
-   PDF_PAD, md5, rc4,
+   PDF_PAD, md5, rc4, sha1, AES_SBOX, AES_INV_SBOX, AES_RCON, aesGmul, aesKeyExpansion,
+   aesAddRoundKey, aesInvSubBytes, aesInvShiftRows, aesInvMixColumns, aesDecryptBlock,
+   aesEcbDecrypt,
    computeKeyR234, pdfPadPassword, checkUserPasswordR234, checkOwnerPasswordR234, bytesEqual,
    sha, hash2B, checkUserPasswordR56, checkOwnerPasswordR56, zipCryptoInitKeys,
-   zipCryptoDecryptBytes, checkZipCryptoPassword, deriveAesKeyMaterial, checkWinZipAesPassword. */
+   zipCryptoDecryptBytes, checkZipCryptoPassword, deriveAesKeyMaterial, checkWinZipAesPassword,
+   officeUtf16LeBytes, officeU32leBytes, officeXorRepeating, officeDeriveStandardKey,
+   officeCheckStandardPassword. */
 
 function buildWorkerSource() {
   const fns = [
-    strToBytes, concatBytes, aesCbcNoPadEncrypt, crc32, crc32Final, md5, rc4,
+    strToBytes, concatBytes, aesCbcNoPadEncrypt, crc32, crc32Final, md5, rc4, sha1,
+    aesGmul, aesKeyExpansion, aesAddRoundKey, aesInvSubBytes, aesInvShiftRows, aesInvMixColumns,
+    aesDecryptBlock, aesEcbDecrypt,
     computeKeyR234, pdfPadPassword, checkUserPasswordR234, checkOwnerPasswordR234, bytesEqual,
     sha, hash2B, checkUserPasswordR56, checkOwnerPasswordR56,
     zipCryptoInitKeys, zipCryptoDecryptBytes, checkZipCryptoPassword,
-    deriveAesKeyMaterial, checkWinZipAesPassword
+    deriveAesKeyMaterial, checkWinZipAesPassword,
+    officeUtf16LeBytes, officeU32leBytes, officeXorRepeating, officeDeriveStandardKey,
+    officeCheckStandardPassword
   ].map(f => f.toString()).join('\n\n');
 
   const constants = `
 const CRC32_TABLE = Uint32Array.from(${JSON.stringify(Array.from(CRC32_TABLE))});
 const PDF_PAD = Uint8Array.from(${JSON.stringify(Array.from(PDF_PAD))});
+const AES_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_SBOX))});
+const AES_INV_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_INV_SBOX))});
+const AES_RCON = Uint8Array.from(${JSON.stringify(Array.from(AES_RCON))});
 `;
 
   const workerMain = `
@@ -56,6 +67,19 @@ async function testZipCandidate(passwordStr, zipPayload) {
   return checkZipCryptoPassword(passwordBytes, zipPayload.target, zipPayload.data);
 }
 
+function testOfficeCandidate(passwordStr, officeInfo) {
+  // Deliberately synchronous and slow: officeCheckStandardPassword runs a mandatory
+  // 50,000-round SHA-1 key derivation per candidate (ECMA-376 Standard encryption's own
+  // brute-force resistance, not something to optimize away).
+  return officeCheckStandardPassword(passwordStr, officeInfo);
+}
+
+async function testCandidate(format, candidate, payload) {
+  if (format === 'pdf') return testPdfCandidate(candidate, payload);
+  if (format === 'office') return testOfficeCandidate(candidate, payload);
+  return testZipCandidate(candidate, payload);
+}
+
 self.onmessage = async function(ev) {
   const msg = ev.data;
   if (msg.type === 'cancel') { cancelled = true; return; }
@@ -74,12 +98,12 @@ self.onmessage = async function(ev) {
     cancelled = false;
     const { chunkId, format, payload, mode } = msg;
     let tested = 0;
-    const REPORT_EVERY = 200;
+    const REPORT_EVERY = format === 'office' ? 1 : 200; // office is ~2-3/sec/worker (50,000-round KDF); report every candidate
     try {
       if (mode === 'dict') {
         for (const candidate of msg.candidates) {
           if (cancelled) break;
-          const ok = format === 'pdf' ? await testPdfCandidate(candidate, payload) : await testZipCandidate(candidate, payload);
+          const ok = await testCandidate(format, candidate, payload);
           tested++;
           if (ok) { self.postMessage({ type: 'found', chunkId, password: candidate, tested }); return; }
           if (tested % REPORT_EVERY === 0) self.postMessage({ type: 'progress', chunkId, tested });
@@ -88,7 +112,7 @@ self.onmessage = async function(ev) {
         for (let idx = msg.start; idx < msg.end; idx++) {
           if (cancelled) break;
           const candidate = indexToCandidate(idx, msg.charset, msg.length);
-          const ok = format === 'pdf' ? await testPdfCandidate(candidate, payload) : await testZipCandidate(candidate, payload);
+          const ok = await testCandidate(format, candidate, payload);
           tested++;
           if (ok) { self.postMessage({ type: 'found', chunkId, password: candidate, tested }); return; }
           if (tested % REPORT_EVERY === 0) self.postMessage({ type: 'progress', chunkId, tested });

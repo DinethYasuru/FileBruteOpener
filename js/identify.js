@@ -101,16 +101,19 @@ function refineZipIdentification(bytes, result) {
 
 function refineOleIdentification(bytes, result) {
   // Encrypted OOXML (.docx/.xlsx/.pptx) is stored as an OLE2 compound file containing
-  // "EncryptionInfo" and "EncryptedPackage" streams. CFB directory entry names are UTF-16LE,
-  // so each ASCII letter is followed by a 0x00 byte; dropping non-printable bytes (rather
-  // than replacing them with a space) reconstructs the contiguous name for a substring scan.
-  const slice = bytes.slice(0, Math.min(bytes.length, 1 << 20));
-  let text = '';
-  for (let i = 0; i < slice.length; i++) { const b = slice[i]; if (b >= 32 && b < 127) text += String.fromCharCode(b); }
-  if (text.includes('EncryptionInfo') || text.includes('EncryptedPackage')) {
+  // "EncryptionInfo" and "EncryptedPackage" streams.
+  const officeInfo = (typeof extractOfficeEncryptionInfo === 'function') ? extractOfficeEncryptionInfo(bytes) : null;
+  if (officeInfo) {
     result.encrypted = true;
     result.format = 'Legacy OLE2 container (encrypted Office Open XML payload)';
-    result.notes.push('CFB-wrapped encrypted OOXML (Agile or Standard encryption). Detection only; no password verification implemented.');
+    if (officeInfo.scheme === 'standard') {
+      result.encryptionDetail = { scheme: 'standard', algId: officeInfo.algId.toString(16), keyBits: officeInfo.keySizeBits };
+      result.notes.push(`"Standard" (ECMA-376/CryptoAPI) encryption, AES-${officeInfo.keySizeBits}. Password verification available (slow: a mandatory 50,000-round key derivation runs per candidate).`);
+    } else if (officeInfo.scheme === 'agile') {
+      result.notes.push('"Agile" encryption (Office 2010+ default). Detection only; verification not yet implemented.');
+    } else {
+      result.notes.push('Unrecognized encryption scheme version. Detection only.');
+    }
   } else {
     result.encrypted = null;
     result.notes.push('OLE2 compound file (legacy .doc/.xls/.ppt or other CFB-based format); encryption status not determined.');

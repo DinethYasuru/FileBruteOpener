@@ -6,6 +6,7 @@ const state = {
   identification: null,
   pdfInfo: null,
   zipAnalysis: null,
+  officeInfo: null,
   history: [],
   activeSearch: null,
 };
@@ -44,13 +45,24 @@ async function loadFile(file) {
   renderIdentification(result);
   addHistory({ action: 'identify', fileName: file.name, detail: result.format, result: result.encrypted ? 'encrypted' : (result.encrypted === false ? 'not encrypted' : 'unknown') });
 
-  state.pdfInfo = null; state.zipAnalysis = null;
+  applyVerifiableState(buf, result);
+  updateActionPanelsVisibility();
+}
+
+/** Sets whichever of state.{pdfInfo,zipAnalysis,officeInfo} applies, based on the
+ * identification result - shared between loading a dropped file and loading a
+ * generated/sample one. Office is only set for the "standard" scheme, the only one with
+ * password verification implemented (see js/office-auth.js). */
+function applyVerifiableState(buf, result) {
+  state.pdfInfo = null; state.zipAnalysis = null; state.officeInfo = null;
   if (result.format === 'PDF' && result.encrypted) {
     state.pdfInfo = extractPdfEncryptionInfo(buf);
   } else if (result.format.startsWith('ZIP') && result.encrypted) {
     state.zipAnalysis = analyzeZip(buf);
+  } else if (typeof extractOfficeEncryptionInfo === 'function') {
+    const officeInfo = extractOfficeEncryptionInfo(buf);
+    if (officeInfo && officeInfo.scheme === 'standard') state.officeInfo = officeInfo;
   }
-  updateActionPanelsVisibility();
 }
 
 function badge(text, cls) { return `<span class="badge ${cls}">${text}</span>`; }
@@ -72,12 +84,12 @@ function renderIdentification(r) {
   `;
 }
 
-function pdfOrZipApplicable() {
-  return !!state.pdfInfo || (!!state.zipAnalysis && state.zipAnalysis.applicable);
+function verifiableFormatApplicable() {
+  return !!state.pdfInfo || (!!state.zipAnalysis && state.zipAnalysis.applicable) || !!state.officeInfo;
 }
 
 function updateActionPanelsVisibility() {
-  const applicable = pdfOrZipApplicable();
+  const applicable = verifiableFormatApplicable();
   el('panel-verify').classList.toggle('hidden', !applicable);
   el('panel-search').classList.toggle('hidden', !applicable);
   el('verify-result').innerHTML = '';
@@ -93,6 +105,7 @@ function setupVerifyPanel() {
     try {
       let result;
       if (state.pdfInfo) result = await verifyPdfPassword(state.file.bytes, pw);
+      else if (state.officeInfo) result = await verifyOfficePassword(state.file.bytes, pw);
       else result = await verifyZipPassword(state.file.bytes, pw);
       renderVerifyResult(result, pw);
       addHistory({ action: 'verify', fileName: state.file.name, detail: `password attempt (len ${pw.length})`, result: result.valid ? 'valid' : 'invalid' });
@@ -133,6 +146,7 @@ function setupSearchPanel() {
 
 function buildSearchPayload() {
   if (state.pdfInfo) return { format: 'pdf', payload: state.pdfInfo };
+  if (state.officeInfo) return { format: 'office', payload: state.officeInfo };
   const analysis = state.zipAnalysis;
   const data = readLocalFileData(state.file.bytes, analysis.target);
   return { format: 'zip', payload: { target: analysis.target, data, aesInfo: analysis.aesInfo } };
@@ -318,9 +332,7 @@ async function loadGeneratedIntoAnalyzer(bytes, name, knownPassword) {
   const result = await identifyFile(bytes);
   state.identification = result;
   renderIdentification(result);
-  state.pdfInfo = null; state.zipAnalysis = null;
-  if (result.format === 'PDF' && result.encrypted) state.pdfInfo = extractPdfEncryptionInfo(bytes);
-  else if (result.format.startsWith('ZIP') && result.encrypted) state.zipAnalysis = analyzeZip(bytes);
+  applyVerifiableState(bytes, result);
   updateActionPanelsVisibility();
   el('verifyPassword').value = knownPassword;
   addHistory({ action: 'generate', fileName: name, detail: `known password: "${knownPassword}"`, result: 'generated' });
