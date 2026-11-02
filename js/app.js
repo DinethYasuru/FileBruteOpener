@@ -244,13 +244,6 @@ function downloadBytes(bytes, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const OTHER_FORMAT_INFO = {
-  rar: { label: 'RAR (AES-256, encrypted header)', link: 'https://www.rarlab.com/download.htm', linkText: 'rarlab.com', pkg: '"rar"' },
-  '7z': { label: '7z (AES-256, encrypted header)', link: 'https://www.7-zip.org/download.html', linkText: '7-zip.org', pkg: '"7zip" / "p7zip-full" on Linux' },
-  office: { label: '.docx / .xlsx / .pptx (Agile encryption)', link: 'https://www.libreoffice.org/download/download/', linkText: 'libreoffice.org', pkg: 'LibreOffice + the "python3-uno" package' },
-  gpg: { label: '.gpg / OpenPGP (AES-256 symmetric)', link: 'https://gnupg.org/download/', linkText: 'gnupg.org', pkg: '"gpg"' },
-};
-
 // Static files committed under samples/ - generated once with these tools, so the hosted
 // (GitHub Pages) site can demonstrate RAR/7z/Office/GPG detection without anyone needing to
 // install anything. Same-origin fetch() works fine over http(s); see the catch below for why
@@ -272,15 +265,6 @@ function setupGenerator() {
 
   const updateFormatPanels = () => {
     const [kind, sub] = formatSelect.value.split(':');
-    const pw = pwField.value || 'test1234';
-
-    el('genOtherPanel').classList.toggle('hidden', kind !== 'other');
-    if (kind === 'other') {
-      const info = OTHER_FORMAT_INFO[sub];
-      el('genOtherNote').innerHTML = `${info.label} needs <a href="${info.link}" target="_blank" rel="noopener">${info.linkText}</a> (${info.pkg}) installed on your machine — a browser page can't shell out to it. Run this locally instead (it generates all four "other" formats at once; any tool that's missing is skipped automatically):`;
-      el('genOtherCommand').textContent = `node local-service/generate-samples.js ./samples ${pw}`;
-    }
-
     const sampleNote = el('genSampleNote');
     sampleNote.classList.toggle('hidden', kind !== 'sample');
     if (kind === 'sample') {
@@ -288,13 +272,11 @@ function setupGenerator() {
     }
   };
   formatSelect.addEventListener('change', updateFormatPanels);
-  pwField.addEventListener('input', updateFormatPanels);
   updateFormatPanels();
 
   el('genBtn').addEventListener('click', async () => {
     const [kind, sub] = formatSelect.value.split(':');
     const pw = pwField.value || 'test1234';
-    if (kind === 'other') return; // nothing to generate in-browser; the panel above already shows what to do
     if (kind === 'pdf') {
       const bytes = await generateEncryptedPdf(sub, pw, pw);
       downloadBytes(bytes, `test-${sub}.pdf`);
@@ -327,17 +309,6 @@ function setupGenerator() {
         el('panel-identify').classList.remove('hidden');
       }
     }
-  });
-
-  el('genOtherCopyBtn').addEventListener('click', async () => {
-    const feedback = el('genOtherCopyFeedback');
-    try {
-      await navigator.clipboard.writeText(el('genOtherCommand').textContent);
-      feedback.textContent = 'Copied.';
-    } catch (e) {
-      feedback.textContent = 'Could not copy automatically — select the text above and copy it manually.';
-    }
-    setTimeout(() => { feedback.textContent = ''; }, 3000);
   });
 }
 

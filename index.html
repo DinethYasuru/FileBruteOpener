@@ -120,26 +120,11 @@
           <option value="sample:pptx">.pptx sample (sample-office.pptx)</option>
           <option value="sample:gpg">.gpg sample (sample.gpg)</option>
         </optgroup>
-        <optgroup label="Generate your own locally — needs a tool installed">
-          <option value="other:rar">RAR (needs rar)</option>
-          <option value="other:7z">7z (needs 7z)</option>
-          <option value="other:office">.docx / .xlsx / .pptx (needs LibreOffice)</option>
-          <option value="other:gpg">.gpg / OpenPGP (needs gpg)</option>
-        </optgroup>
       </select>
       <button id="genBtn" class="secondary">Generate</button>
     </div>
 
     <p class="notes hidden" id="genSampleNote"></p>
-
-    <div id="genOtherPanel" class="hidden">
-      <p class="notes" id="genOtherNote"></p>
-      <pre class="mono" id="genOtherCommand" style="background:#0d121d; padding:10px 12px; border-radius:6px; overflow-x:auto; margin:8px 0;"></pre>
-      <div class="row">
-        <button id="genOtherCopyBtn" class="secondary">Copy command</button>
-        <span class="notes" id="genOtherCopyFeedback"></span>
-      </div>
-    </div>
   </section>
 
   <section class="panel" id="panel-history">
