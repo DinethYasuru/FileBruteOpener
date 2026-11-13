@@ -53,8 +53,9 @@ async function loadFile(file) {
 
 /** Sets whichever of state.{pdfInfo,zipAnalysis,officeInfo} applies, based on the
  * identification result - shared between loading a dropped file and loading a
- * generated/sample one. Office is only set for the "standard" scheme, the only one with
- * password verification implemented (see js/office-auth.js). */
+ * generated/sample one. Office is only set for schemes with password verification actually
+ * implemented: "standard" always, and "agile" only when its XML parsed cleanly and its
+ * hashAlgorithm is one sha1.js/sha2.js implements (see js/office-auth.js). */
 function applyVerifiableState(buf, result) {
   state.pdfInfo = null; state.zipAnalysis = null; state.officeInfo = null;
   if (result.format === 'PDF' && result.encrypted) {
@@ -64,6 +65,7 @@ function applyVerifiableState(buf, result) {
   } else if (typeof extractOfficeEncryptionInfo === 'function') {
     const officeInfo = extractOfficeEncryptionInfo(buf);
     if (officeInfo && officeInfo.scheme === 'standard') state.officeInfo = officeInfo;
+    else if (officeInfo && officeInfo.scheme === 'agile' && !officeInfo.parseError && officeInfo.hashSupported) state.officeInfo = officeInfo;
   }
 }
 

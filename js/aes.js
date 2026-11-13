@@ -123,4 +123,21 @@ function aesEcbDecrypt(keyBytes, data) {
   return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { aesDecryptBlock, aesEcbDecrypt, aesKeyExpansion };
+/** CBC decrypt (no padding removal - Office's Agile encryption verifier blocks are a fixed,
+ * known size with no PKCS#7 padding to strip). iv16 must be exactly 16 bytes; data's length
+ * must be a multiple of 16. Needed because Web Crypto deliberately exposes no "raw"/unpadded
+ * AES-CBC decrypt and no AES-192 support at all - same rationale as aesEcbDecrypt above. */
+function aesCbcDecrypt(keyBytes, iv16, data) {
+  const out = new Uint8Array(data.length);
+  let prevCipher = iv16;
+  for (let off = 0; off < data.length; off += 16) {
+    const cipherBlock = data.slice(off, off + 16);
+    const plainBlock = aesDecryptBlock(keyBytes, cipherBlock);
+    for (let i = 0; i < 16; i++) plainBlock[i] ^= prevCipher[i];
+    out.set(plainBlock, off);
+    prevCipher = cipherBlock;
+  }
+  return out;
+}
+
+if (typeof module !== 'undefined') module.exports = { aesDecryptBlock, aesEcbDecrypt, aesCbcDecrypt, aesKeyExpansion };
