@@ -35,12 +35,14 @@ function setupDropzone() {
     if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
   });
   input.addEventListener('change', () => { if (input.files.length) loadFile(input.files[0]); });
+  el('clearFileBtn').addEventListener('click', resetFileState);
 }
 
 async function loadFile(file) {
   const buf = new Uint8Array(await file.arrayBuffer());
   state.file = { name: file.name, size: buf.length, bytes: buf };
   el('dropzone').textContent = `Loaded: ${file.name} (${buf.length.toLocaleString()} bytes) — click to choose a different file`;
+  el('clearFileBtn').disabled = false;
 
   const result = await identifyFile(buf);
   state.identification = result;
@@ -49,6 +51,44 @@ async function loadFile(file) {
 
   applyVerifiableState(buf, result);
   updateActionPanelsVisibility();
+}
+
+/** Fully resets everything tied to the currently loaded file - dropzone, identification,
+ * and the verify/search panels (including cancelling any in-flight search) - so starting
+ * over with a different file doesn't require a page reload or leave stale results showing. */
+function resetFileState() {
+  if (state.activeSearch) { state.activeSearch.cancel(); state.activeSearch = null; }
+  state.file = null;
+  state.identification = null;
+  state.pdfInfo = null; state.zipAnalysis = null; state.officeInfo = null;
+  state.calibratedRate = null; state.calibratedFormat = null;
+
+  el('dropzone').textContent = 'Drop a file here, or click to choose one';
+  el('fileInput').value = '';
+  el('clearFileBtn').disabled = true;
+
+  el('panel-identify').classList.add('hidden');
+  el('identify-body').innerHTML = '';
+
+  el('panel-verify').classList.add('hidden');
+  el('panel-search').classList.add('hidden');
+  clearVerifyPanel();
+  clearSearchPanel();
+}
+
+function clearVerifyPanel() {
+  el('verifyPassword').value = '';
+  el('verify-result').innerHTML = '';
+}
+
+function clearSearchPanel() {
+  el('dictInput').value = '';
+  el('maskLength').value = 4;
+  el('search-result').innerHTML = '';
+  el('search-estimate').textContent = '';
+  el('searchProgressWrap').classList.add('hidden');
+  el('progress-fill').style.width = '0%';
+  el('progress-stats').textContent = '';
 }
 
 /** Sets whichever of state.{pdfInfo,zipAnalysis,officeInfo} applies, based on the
@@ -106,6 +146,7 @@ function updateActionPanelsVisibility() {
 /* ---------- Known-password verification ---------- */
 
 function setupVerifyPanel() {
+  el('clearVerifyBtn').addEventListener('click', clearVerifyPanel);
   el('verifyBtn').addEventListener('click', async () => {
     const pw = el('verifyPassword').value;
     el('verifyBtn').disabled = true;
@@ -210,6 +251,10 @@ function updateWorkersNote() {
 }
 
 function setupSearchPanel() {
+  el('clearSearchBtn').addEventListener('click', () => {
+    if (state.activeSearch) state.activeSearch.cancel();
+    clearSearchPanel();
+  });
   el('searchMode').addEventListener('change', () => {
     const mode = el('searchMode').value;
     el('dict-fields').classList.toggle('hidden', mode !== 'dict');
@@ -440,6 +485,7 @@ function setupGenerator() {
 async function loadGeneratedIntoAnalyzer(bytes, name, knownPassword) {
   state.file = { name, size: bytes.length, bytes };
   el('dropzone').textContent = `Loaded generated file: ${name} (${bytes.length.toLocaleString()} bytes)`;
+  el('clearFileBtn').disabled = false;
   const result = await identifyFile(bytes);
   state.identification = result;
   renderIdentification(result);
@@ -464,6 +510,13 @@ function renderHistory() {
 }
 
 function setupHistoryExport() {
+  el('clearHistoryBtn').addEventListener('click', () => {
+    if (state.history.length === 0) return;
+    if (confirm(`Clear all ${state.history.length} job history entries? This cannot be undone.`)) {
+      state.history = [];
+      renderHistory();
+    }
+  });
   el('exportJsonBtn').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(state.history, null, 2)], { type: 'application/json' });
     triggerDownload(blob, 'job-history.json');
