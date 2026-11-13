@@ -9,7 +9,7 @@
 <body>
 <header>
   <h1>File Security Analyzer &amp; Authorized Password Recovery Lab</h1>
-  <p>Educational tool for identifying file encryption and recovering access to your own password-protected files.</p>
+  <p class="subtitle">Educational tool for identifying file encryption and recovering access to your own password-protected files.</p>
   <div class="banner">
     For authorized use only: files you own, or where you otherwise have explicit permission to attempt recovery.
     Searches are bounded to a known password, a finite dictionary, or a capped mask keyspace — there is no
@@ -19,19 +19,25 @@
 
 <main>
 
-  <section class="panel" id="panel-upload">
-    <h2>1. Load a file</h2>
+  <section class="panel span-full" id="panel-upload">
+    <div class="panel-head">
+      <h2>1. Load a file</h2>
+      <button id="clearFileBtn" class="ghost" disabled>Clear file</button>
+    </div>
     <div class="dropzone" id="dropzone">Drop a file here, or click to choose one</div>
     <input type="file" id="fileInput" style="display:none">
   </section>
 
-  <section class="panel hidden" id="panel-identify">
-    <h2>2. Identification</h2>
+  <section class="panel hidden span-full" id="panel-identify">
+    <div class="panel-head"><h2>2. Identification</h2></div>
     <div id="identify-body"></div>
   </section>
 
   <section class="panel hidden" id="panel-verify">
-    <h2>3. Verify a known password</h2>
+    <div class="panel-head">
+      <h2>3. Verify a known password</h2>
+      <button id="clearVerifyBtn" class="ghost">Clear</button>
+    </div>
     <div class="row">
       <input type="password" id="verifyPassword" placeholder="Password to test">
       <button id="verifyBtn">Verify</button>
@@ -40,7 +46,10 @@
   </section>
 
   <section class="panel hidden" id="panel-search">
-    <h2>4. Candidate search</h2>
+    <div class="panel-head">
+      <h2>4. Candidate search</h2>
+      <button id="clearSearchBtn" class="ghost">Clear</button>
+    </div>
     <p class="notes">
       <strong>Dictionary</strong>: try each password you list, one per line - use this when you have a
       shortlist of guesses. <strong>Mask</strong>: try every combination of a charset up to a fixed length
@@ -81,7 +90,7 @@
   </section>
 
   <section class="panel" id="panel-diagnostics">
-    <h2>Diagnostics</h2>
+    <div class="panel-head"><h2>Diagnostics</h2></div>
     <div class="grid-2">
       <div>
         <div class="row"><strong>CPU logical cores:</strong> <span id="diag-cores"></span></div>
@@ -96,7 +105,7 @@
   </section>
 
   <section class="panel" id="panel-generator">
-    <h2>Test-file generator (educational demonstrations)</h2>
+    <div class="panel-head"><h2>Test-file generator (educational demonstrations)</h2></div>
     <p class="notes">Generates valid encrypted files for a password you choose, so you can try the verifier and
       search above against a real file — these also open correctly in standard PDF/ZIP tools.
       (WinZip AES-192 test files can't be generated here because browsers' Web Crypto API doesn't support
@@ -135,11 +144,14 @@
     <p class="notes hidden" id="genSampleNote"></p>
   </section>
 
-  <section class="panel" id="panel-history">
-    <h2>Job history</h2>
-    <div class="row">
-      <button id="exportJsonBtn" class="secondary">Export JSON</button>
-      <button id="exportCsvBtn" class="secondary">Export CSV</button>
+  <section class="panel span-full" id="panel-history">
+    <div class="panel-head">
+      <h2>Job history</h2>
+      <div class="row" style="margin-bottom:0">
+        <button id="exportJsonBtn" class="secondary">Export JSON</button>
+        <button id="exportCsvBtn" class="secondary">Export CSV</button>
+        <button id="clearHistoryBtn" class="danger-ghost">Clear history</button>
+      </div>
     </div>
     <table>
       <thead><tr><th>Time</th><th>File</th><th>Action</th><th>Detail</th><th>Result</th></tr></thead>
@@ -157,6 +169,7 @@
 <script src="js/rc4.js"></script>
 <script src="js/rc4-wasm.js"></script>
 <script src="js/sha1.js"></script>
+<script src="js/sha2.js"></script>
 <script src="js/aes.js"></script>
 <script src="js/cfb.js"></script>
 <script src="js/pdf-auth.js"></script>

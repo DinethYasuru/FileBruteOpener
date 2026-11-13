@@ -13,7 +13,9 @@
    zipCryptoDecryptBytes, checkZipCryptoPassword, deriveAesKeyMaterial, checkWinZipAesPassword,
    officeUtf16LeBytes, officeU32leBytes, officeXorRepeating, officeDeriveStandardKey,
    officeCheckStandardPassword, MD5_WASM_BASE64, md5WasmBase64ToBytes, tryEnableMd5Wasm,
-   RC4_WASM_BASE64, rc4WasmBase64ToBytes, tryEnableRc4Wasm. */
+   RC4_WASM_BASE64, rc4WasmBase64ToBytes, tryEnableRc4Wasm,
+   sha256, sha384, sha512, aesCbcDecrypt, officeAgileHash, officeAgileFixKeyLength,
+   officeAgileZeroPad, officeAgileDeriveKey, officeCheckAgilePassword. */
 
 // Captured at script-load time, before app.js's later tryEnableMd5Wasm()/tryEnableRc4Wasm()
 // calls can monkey-patch the live `md5`/`rc4` bindings to their WASM-backed replacements.
@@ -60,9 +62,12 @@ async function testZipCandidate(passwordStr, zipPayload) {
 }
 
 function testOfficeCandidate(passwordStr, officeInfo) {
-  // Deliberately synchronous and slow: officeCheckStandardPassword runs a mandatory
-  // 50,000-round SHA-1 key derivation per candidate (ECMA-376 Standard encryption's own
-  // brute-force resistance, not something to optimize away).
+  // Deliberately synchronous and slow: both schemes run a mandatory, sequential KDF per
+  // candidate by design (ECMA-376 Standard's 50,000-round SHA-1 loop, or Agile's own
+  // spinCount - typically 100,000 - run *twice*, once per verifier block key, over
+  // SHA-256/384/512) - that's each scheme's own brute-force resistance, not something to
+  // optimize away.
+  if (officeInfo.scheme === 'agile') return officeCheckAgilePassword(passwordStr, officeInfo);
   return officeCheckStandardPassword(passwordStr, officeInfo);
 }
 
@@ -84,6 +89,9 @@ function buildWorkerSource() {
     deriveAesKeyMaterial, checkWinZipAesPassword,
     officeUtf16LeBytes, officeU32leBytes, officeXorRepeating, officeDeriveStandardKey,
     officeCheckStandardPassword,
+    sha256Rotr, sha256, sha512Core, sha512, sha384,
+    aesCbcDecrypt, officeAgileHash, officeAgileFixKeyLength, officeAgileZeroPad,
+    officeAgileDeriveKey, officeCheckAgilePassword,
     indexToCandidate, testPdfCandidate, testZipCandidate, testOfficeCandidate, testCandidate,
     md5WasmBase64ToBytes, tryEnableMd5Wasm, rc4WasmBase64ToBytes, tryEnableRc4Wasm
   ].map(f => f.toString()).join('\n\n');
@@ -100,6 +108,10 @@ const RC4_WASM_BASE64 = ${JSON.stringify(RC4_WASM_BASE64)};
 const AES_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_SBOX))});
 const AES_INV_SBOX = Uint8Array.from(${JSON.stringify(Array.from(AES_INV_SBOX))});
 const AES_RCON = Uint8Array.from(${JSON.stringify(Array.from(AES_RCON))});
+const SHA256_K = Uint32Array.from(${JSON.stringify(Array.from(SHA256_K))});
+const SHA512_K = ${JSON.stringify(SHA512_K)};
+const OFFICE_AGILE_BLOCKKEY_VERIFIER_HASH_INPUT = Uint8Array.from(${JSON.stringify(Array.from(OFFICE_AGILE_BLOCKKEY_VERIFIER_HASH_INPUT))});
+const OFFICE_AGILE_BLOCKKEY_VERIFIER_HASH_VALUE = Uint8Array.from(${JSON.stringify(Array.from(OFFICE_AGILE_BLOCKKEY_VERIFIER_HASH_VALUE))});
 `;
 
   const workerMain = `

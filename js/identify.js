@@ -110,7 +110,15 @@ function refineOleIdentification(bytes, result) {
       result.encryptionDetail = { scheme: 'standard', algId: officeInfo.algId.toString(16), keyBits: officeInfo.keySizeBits };
       result.notes.push(`"Standard" (ECMA-376/CryptoAPI) encryption, AES-${officeInfo.keySizeBits}. Password verification available (slow: a mandatory 50,000-round key derivation runs per candidate).`);
     } else if (officeInfo.scheme === 'agile') {
-      result.notes.push('"Agile" encryption (Office 2010+ default). Detection only; verification not yet implemented.');
+      if (officeInfo.parseError) {
+        result.notes.push('"Agile" encryption (Office 2010+ default), but its EncryptionInfo XML descriptor could not be parsed. Detection only.');
+      } else if (!officeInfo.hashSupported) {
+        result.encryptionDetail = { scheme: 'agile', hashAlgorithm: officeInfo.hashAlgorithm, keyBits: officeInfo.keyBits };
+        result.notes.push(`"Agile" encryption (Office 2010+ default), AES-${officeInfo.keyBits}, but its hash algorithm (${officeInfo.hashAlgorithm || 'unknown'}) isn't implemented here. Detection only.`);
+      } else {
+        result.encryptionDetail = { scheme: 'agile', hashAlgorithm: officeInfo.hashAlgorithm, keyBits: officeInfo.keyBits, spinCount: officeInfo.spinCount };
+        result.notes.push(`"Agile" encryption (Office 2010+ default), AES-${officeInfo.keyBits} / ${officeInfo.hashAlgorithm}. Password verification available (very slow: a mandatory ${officeInfo.spinCount.toLocaleString()}-round key derivation runs twice per candidate).`);
+      }
     } else {
       result.notes.push('Unrecognized encryption scheme version. Detection only.');
     }
