@@ -362,8 +362,10 @@ function downloadBytes(bytes, filename) {
 
 // Static files committed under samples/ - generated once with these tools, so the hosted
 // (GitHub Pages) site can demonstrate RAR/7z/Office/GPG detection without anyone needing to
-// install anything. Same-origin fetch() works fine over http(s); see the catch below for why
-// it doesn't when index.html is opened directly via file://.
+// install anything. Loaded from the base64 copies in js/samples-data.js (SAMPLE_DATA_B64),
+// which works identically over http(s) and file:// - no fetch() of a sibling file needed,
+// so this works on a double-clicked index.html too, with no local server required. See
+// local-service/embed-samples.js for how that file is (re)generated from samples/*.
 const SAMPLE_FILES = {
   pdf: { path: 'samples/sample.pdf', password: 'test1234' },
   zip: { path: 'samples/sample.zip', password: 'test1234' },
@@ -411,17 +413,22 @@ function setupGenerator() {
     } else if (kind === 'sample') {
       const { path: samplePath, password } = SAMPLE_FILES[sub];
       try {
-        const res = await fetch(samplePath);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const bytes = new Uint8Array(await res.arrayBuffer());
+        // Embedded base64 (works over file:// too) is tried first; fetch() is only a
+        // fallback for a deployment that strips js/samples-data.js and relies on the
+        // committed samples/ files being served alongside it instead.
+        let bytes;
+        if (typeof SAMPLE_DATA_B64 !== 'undefined' && SAMPLE_DATA_B64[sub]) {
+          bytes = base64ToBytes(SAMPLE_DATA_B64[sub]);
+        } else {
+          const res = await fetch(samplePath);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          bytes = new Uint8Array(await res.arrayBuffer());
+        }
         await loadGeneratedIntoAnalyzer(bytes, samplePath.split('/').pop(), password);
       } catch (e) {
         el('search-result').innerHTML = '';
-        el('identify-body').innerHTML = `<div class="result-box bad">Could not load ${samplePath} via fetch() (${e.message}).
-          This works when the app is served over http(s) - e.g. GitHub Pages, or a local server like
-          <code>python3 -m http.server</code> - but browsers block fetch() of sibling files when index.html
-          is opened directly via file://. Download the file from the samples/ folder instead and drop it
-          into the loader above.</div>`;
+        el('identify-body').innerHTML = `<div class="result-box bad">Could not load the pre-generated sample (${e.message}).
+          Download the file from the samples/ folder instead and drop it into the loader above.</div>`;
         el('panel-identify').classList.remove('hidden');
       }
     }

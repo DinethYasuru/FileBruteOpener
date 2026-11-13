@@ -23,11 +23,15 @@ client-side JS and needs nothing beyond a browser.
 The `samples/` folder has one pre-generated encrypted file per format (PDF, ZIP, RAR, 7z,
 `.docx`/`.xlsx`/`.pptx`, GPG), all sharing the password `test1234`. The dashboard's generator
 panel can load these straight into the identification view with one click ("Pre-generated
-sample" in the format dropdown) — that only works when the page is served over `http(s)://`
-(same-origin `fetch()`), not when `index.html` is opened directly via `file://`; the panel
-says so and falls back to "download it from `samples/` and drop it in the loader" in that
-case. These are the only files in this repo that needed an external tool to create (see
-`local-service/README.md`) — they're pre-baked so students never need to install anything.
+sample" in the format dropdown). This works whether the page is opened via `http(s)://` or
+double-clicked directly as a `file://` page: the bytes are embedded as base64 directly in
+`js/samples-data.js` (generated from `samples/*` by `local-service/embed-samples.js`,
+re-run it if a sample file ever changes), so no same-origin `fetch()` of a sibling file is
+needed at all. If that file is ever missing, the panel falls back to a same-origin `fetch()`
+(works over `http(s)://` only) and finally to "download it from `samples/` and drop it in
+the loader" as a last resort. The pre-generated samples are the only files in this repo that
+needed an external tool to create (see `local-service/README.md`) — they're pre-baked so
+students never need to install anything.
 
 ## What it does
 
@@ -128,6 +132,8 @@ js/identify.js        Magic-byte identification + entropy heuristic, format-spec
 js/worker-pool.js    Self-contained Blob-URL Web Worker pool for candidate search
 js/gpu.js             WebGPU detection + CPU worker-scaling benchmark
 js/generator.js      Encrypted PDF/ZIP test-file generator
+js/samples-data.js    Base64 copies of samples/* (generated - see local-service/embed-samples.js),
+                       so the pre-generated-sample loader works over file:// too, no fetch()
 js/app.js             Dashboard wiring: state, panels, job history, export
 wasm-src/             C source for the WASM modules above (not loaded at runtime - kept so
                        the embedded binaries aren't a black box; see wasm-src/README.md)
